@@ -9,9 +9,13 @@ from bs4 import BeautifulSoup
 
 class JTAG:
     def __init__(self):
-        url  = environ.get('FTDI_DEVICE', 'ftdi://ftdi:232h/1')
+        self.interfaces = Ftdi.list_devices()
+        print(self.interfaces)
+        
+
+    def connect(self):
         self.engine = JtagEngine(frequency=10000)
-        self.engine.configure(url)
+        self.engine.configure(self.interface_url)
         self.engine.reset()
 
     def ennumerate(self):

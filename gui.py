@@ -1,16 +1,13 @@
 import PySimpleGUI as sg
-
 from jtag import *
 
 sg.theme('DarkAmber')   # Add a touch of color
 
 jtag = JTAG()
 
-deviceList = []
-
 # All the stuff inside your window.
-layout = [  [sg.Button('ennumerate'), sg.Button('Cancel')],
-            [sg.Combo([], size=(12,20), key='deviceList')] ]
+layout = [  [sg.Listbox(['1','2','3'], size=(40,10), key='interfaces', enable_events=True), sg.Button('connect')],
+            [sg.Button('Cancel')] ]
 
 # Create the Window
 window = sg.Window('JTAG Boundary Scan', layout)
@@ -19,9 +16,13 @@ while True:
     event, values = window.read()
     if event == sg.WIN_CLOSED or event == 'Cancel': # if user closes window or clicks cancel
         break
-    if event == 'ennumerate':
+    if event == 'connect':
+        jtag.connect()
         jtag.ennumerate()
-        deviceList = jtag.devices
-        window['deviceList'].update(value=deviceList[0], values=deviceList)
+        interfaces = jtag.devices
+        window['interfaces'].update(value=interfaces[0], values=interfaces)
+    if event == 'interfaces':
+        print('click')
+        jtag.interface_url = 'ftdi://' + window['interfaces'].get()[0]
 
 window.close()
