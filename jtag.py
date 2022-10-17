@@ -4,15 +4,16 @@ from pyftdi.jtag import JtagEngine, JtagTool
 from pyftdi.ftdi import Ftdi
 from pyftdi.bits import BitSequence
 
-import requests
-from bs4 import BeautifulSoup
+
 
 class JTAG:
     def __init__(self):
         self.interfaces = Ftdi.list_devices()
         print(self.interfaces)
-        
 
+    def get_available_interfaces(self)
+        return self.interfaces
+        
     def connect(self):
         self.engine = JtagEngine(frequency=10000)
         self.engine.configure(self.interface_url)
@@ -21,6 +22,7 @@ class JTAG:
     def ennumerate(self):
         self.devices = []
         i = 0
+        self.engine.reset()
         self.engine.change_state('shift_dr')
         idcode = self.engine._ctrl.read(32)
         while int(idcode) != 0:
@@ -33,26 +35,7 @@ class JTAG:
         self.engine.change_state('update_dr')
         print('%d devices found' % i)
 
-    def get_bsdl(self):
-        bsdl_site = 'https://bsdl.info/'
-        bsdl_search = bsdl_site + 'list.htm?search='
-        for device in self.devices:
-            unversioned = '0000' + format(int(device['IDCODE']), '032b')[4:]
-            print(unversioned)
-            page = requests.get(bsdl_search + unversioned)
-            soup = BeautifulSoup(page.content, 'html.parser')
-            panel = soup.select('div.panel')
-            table = panel[0].select('table')
-            entries = table[0].select('tbody')[0].select('tr')
-            # for entry in entries:
-            entry = entries[0]
-            name = entry.find('a').getText().strip()
-            view_link = entry.select('a.button')[0].get('href')
-            print('name ' + name + ' link ' + bsdl_site + view_link)
-            page = requests.get(bsdl_site + view_link)
-            soup = BeautifulSoup(page.content, 'html.parser')
-            code = soup.select('code')[0].getText()
-            print(code)
+
 
 # 00001011101000000000010001110111
 # 01001011101000000000010001110111

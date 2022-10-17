@@ -1,9 +1,11 @@
 import PySimpleGUI as sg
 from jtag import *
+from bsdl_fetcher import bsdl_fetcher
 
 sg.theme('DarkAmber')   # Add a touch of color
 
 jtag = JTAG()
+fetcher = bsdl_fetcher()
 
 # All the stuff inside your window.
 layout = [  [sg.Listbox(['1','2','3'], size=(40,10), key='interfaces', enable_events=True), sg.Button('connect')],
