@@ -21,8 +21,9 @@ class bsdl_gui():
                 col_widths=self.table_cols_width,
                 auto_size_columns=False,
                 justification='left',
-                key='available_bsdl_list')],
-            [sg.Button('View Details'), sg.Button('View BSDL'), sg.Button('Download'), sg.Button('Quit')] 
+                key='available_bsdl_list',
+                enable_events=True)],
+            [sg.Button('View Details', disabled=True), sg.Button('View BSDL', disabled=True), sg.Button('Download', disabled=True), sg.Button('Quit')] 
         ]
     
     def start(self):
@@ -37,6 +38,10 @@ class bsdl_gui():
                     self.window['available_bsdl_list'].update(values=self.bsdl_list)
                 except:
                     print('wrong IDCODE format !')
+            elif event == 'available_bsdl_list':
+                self.window['View Details'].update(disabled=False)
+                self.window['View BSDL'].update(disabled=False)
+                self.window['Download'].update(disabled=False)
             elif event == 'View Details':
                 webbrowser.open(self.bsdl_list[values['available_bsdl_list'][0]][2])
             elif event == 'View BSDL':
