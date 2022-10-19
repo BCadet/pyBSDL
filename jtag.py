@@ -1,22 +1,55 @@
 #!/usr/bin/env python3
 from os import environ
-from pyftdi.jtag import JtagEngine, JtagTool
+from pyftdi.jtag import JtagEngine
 from pyftdi.ftdi import Ftdi
 from pyftdi.bits import BitSequence
 
+import bsdl
+import bsdlJson
+import binascii
 
+def get_bit_settings(bit_state_dict, boundary_reg):
+    byte_array = list(boundary_reg[::-1])
+
+    for bit in bit_state_dict.keys():
+        byte_index = bit // 8
+        byte = 1 << (bit % 8)
+        if bit_state_dict[bit] == 1:
+            byte_array[byte_index] |= byte
+        else:
+            byte_array[byte_index] &= (~byte & 0xff)
+
+    # return binascii.b2a_hex(bytes(byte_array[::-1])).upper()
+    bitsequence = None
+    for byte in byte_array:
+        if bitsequence is None:
+            bitsequence = BitSequence(byte, length=8)
+        else:
+            bitsequence += BitSequence(byte, length=8)
+    return bitsequence.reverse()
 
 class JTAG:
+
+    class BsdlSemantics:
+        def map_string(self, ast):
+            parser = bsdl.bsdlParser()
+            ast = parser.parse(''.join(ast), "port_map")
+            return ast
+
+        def grouped_port_identification(self, ast):
+            parser = bsdl.bsdlParser()
+            ast = parser.parse(''.join(ast), "group_table")
+            return ast
+    
     def __init__(self):
         self.interfaces = Ftdi.list_devices()
-        print(self.interfaces)
 
-    def get_available_interfaces(self)
+    def get_available_interfaces(self):
         return self.interfaces
         
-    def connect(self):
+    def connect(self, interface):
         self.engine = JtagEngine(frequency=10000)
-        self.engine.configure(self.interface_url)
+        self.engine.configure(interface)
         self.engine.reset()
 
     def ennumerate(self):
@@ -35,161 +68,47 @@ class JTAG:
         self.engine.change_state('update_dr')
         print('%d devices found' % i)
 
+    def load_bsdl(self, bsdl_file):
+        parser = bsdl.bsdlParser()
+        json = parser.parse(bsdl_file, "bsdl_description", semantics=self.BsdlSemantics(), parseinfo=False).asjson()
+        self.json_bsdl = bsdlJson.BsdlJson(json)
 
+    def write_pin(self, pin, value):
+        bit_state_dict = {}
+        for bit in range(0, self.json_bsdl.boundary_length):
+            cell = self.json_bsdl.boundary_register[str(bit)]
+            cell_spec = cell["cell_spec"]
+            if cell_spec["port_id"] == pin:
+                if cell_spec["function"].upper() == "OUTPUT3":
+                    disable_spec = cell["input_or_disable_spec"]
+                    control_cell_number = int(disable_spec["control_cell"])
+                    disable_value = int(disable_spec["disable_value"])
+                    enable_value = 0 if disable_value == 1 else 1
+                    bit_state_dict[control_cell_number] = enable_value
+                    bit_state_dict[bit] = value
 
-# 00001011101000000000010001110111
-# 01001011101000000000010001110111
+        self.engine.write_ir(self.json_bsdl.sample_opcode)
+        boundary_reg = self.engine.read_dr(self.json_bsdl.boundary_length)
+
+        bit_settings = get_bit_settings(bit_state_dict, boundary_reg)
+
+        print(bit_settings)
+        val = BitSequence(1<<62, length=self.json_bsdl.boundary_length).reverse()
+        print(val)
+
+        self.engine.write_ir(self.json_bsdl.get_opcode('PRELOAD'))
+        self.engine.write_dr(val)
+        self.engine.write_ir(self.json_bsdl.get_opcode('EXTEST'))
+        self.engine.write_dr(val)
+
 
 if __name__ == '__main__':
     jtag = JTAG()
+    jtag.connect('ftdi:///' + str(jtag.interfaces[0][1]))
     jtag.ennumerate()
-    jtag.get_bsdl()
-    # jtag.change_state('shift_dr')
-    # idcode = jtag._ctrl.read(32)
-    # idcode2 = jtag._ctrl.read(32)
-    # idcode3 = jtag._ctrl.read(32)
-    # jtag.change_state('update_dr')
-    # print("IDCODE = 0x%08X" % int(idcode))
-    # print("IDCODE2 = 0x%08X" % int(idcode2))
-    # print("IDCODE3 = 0x%08X" % int(idcode3))
+    with open('STM32F301_F302_LQFP64.bsd','r') as raw_bsdl:
+        jtag.load_bsdl(raw_bsdl.read())
+    print('write pin')
+    jtag.write_pin('PB13', 1)
 
-    # jtag.capture_ir()
-    # jtag.write_ir(BitSequence('1111111111', msb=True, length=10))
-    # jtag.write_ir(JTAG_INSTR['BYPASS'])
-    # tool.detect_register_size()
-    # jtag.write_ir(JTAG_INSTR['IDCODE'])
-    # print("IDCODE = 0x%08X" %tool.idcode())
-    # jtag.write_ir(JTAG_INSTR['BYPASS'])
-    # jtag.write_ir(JTAG_INSTR['BYPASS'])
-    # jtag.capture_ir()
-    # tool.detect_register_size()
-
-    # jtag.write_ir(JTAG_INSTR['IDCODE'])
-    # print("IDCODE = 0x%08X" %tool.idcode())
-    # jtag.write_ir(JTAG_INSTR['IDCODE_ST'])
-    # print("IDCODE = 0x%08X" %(tool.idcode()))
-    # print("IDCODE = 0x%08X" %tool.idcode())
     del jtag
-
-# JTAG_INSTR = {'SAMPLE': BitSequence('000000010', msb=True, length=9),
-#               'PRELOAD': BitSequence('000000010', msb=True, length=9),
-#               'IDCODE': BitSequence('000001110', msb=True, length=9),
-#               'BYPASS': BitSequence('111111111', msb=True, length=9),
-#               'IDCODE_ST': BitSequence('00001', msb=True, length=9)}
-
-
-# class JtagTestCase():
-
-#     def setUp(self):
-#         url = environ.get('FTDI_DEVICE', 'ftdi://ftdi:232h/1')
-#         self.jtag = JtagEngine(frequency=10000)
-#         self.jtag.configure(url)
-#         self.jtag.reset()
-#         self.tool = JtagTool(self.jtag)
-#         self.jtag.go_idle()
-
-#     def tearDown(self):
-#         del self.jtag
-
-#     def test_idcode_reset(self):
-#         """Read the IDCODE right after a JTAG reset"""
-#         self.jtag.reset()
-#         idcode = self.jtag.read_dr(32)
-#         idcode2 = self.jtag.read_dr(32)
-#         self.jtag.go_idle()
-#         print("IDCODE (reset): 0x%x" % int(idcode))
-#         print("IDCODE2 (reset): 0x%x" % int(idcode2))
-
-#     def test_idcode_sequence(self):
-#         """Read the IDCODE using the dedicated instruction"""
-#         instruction = JTAG_INSTR['IDCODE_ST']
-#         # instruction = JTAG_INSTR['IDCODE_ST']
-#         self.jtag.write_ir(instruction)
-#         idcode = self.jtag.capture_dr()
-#         idcode = self.jtag.read_dr(32)
-#         self.jtag.go_idle()
-#         print("IDCODE (idcode): 0x%08x" % (int(idcode)))
-
-#     def test_idcode_shift_register(self):
-#         """Read the IDCODE using the dedicated instruction with
-#            shift_and_update_register"""
-#         instruction = JTAG_INSTR['IDCODE']
-#         self.jtag.change_state('shift_ir')
-#         retval = self.jtag.shift_and_update_register(instruction)
-#         print("retval: 0x%x" % int(retval))
-#         self.jtag.go_idle()
-#         self.jtag.change_state('shift_dr')
-#         idcode = self.jtag.shift_and_update_register(BitSequence('0'*32*2))
-#         self.jtag.go_idle()
-#         print("IDCODE (idcode): 0x%08x" % int(idcode))
-
-#     def test_bypass_shift_register(self):
-#         """Test the BYPASS instruction using shift_and_update_register"""
-#         instruction = JTAG_INSTR['BYPASS']
-#         self.jtag.change_state('shift_ir')
-#         retval = self.jtag.shift_and_update_register(instruction)
-#         print("retval: 0x%x" % int(retval))
-#         self.jtag.go_idle()
-#         self.jtag.change_state('shift_dr')
-#         _in = BitSequence('011011110000'*2, length=24)
-#         out = self.jtag.shift_and_update_register(_in)
-#         self.jtag.go_idle()
-#         print("BYPASS sent: %s, received: %s  (should be left shifted by one)"
-#               % (_in, out))
-
-# def detect_reg_size(tool):
-#         # Freely inpired from UrJTAG
-#         stm = tool._engine.state_machine
-#         if not stm.state_of('shift'):
-#             raise JtagError("Invalid state: %s" % stm.state())
-#         if stm.state_of('capture'):
-#             bs = BitSequence(False)
-#             tool._engine.controller.write_tms(bs)
-#             stm.handle_events(bs)
-#         MAX_REG_LEN = 1024
-#         PATTERN_LEN = 2
-#         stuck = None
-#         for length in range(1, MAX_REG_LEN):
-#             print("Testing for length %d" % length)
-#             zero = BitSequence(length=length)
-#             inj = BitSequence(length=length+PATTERN_LEN)
-#             inj.inc()
-#             ok = False
-#             for _ in range(1, 1 << PATTERN_LEN):
-#                 ok = False
-#                 tool._engine.write(zero, False)
-#                 print('write ' + str(zero))
-#                 rcv = tool._engine.shift_register(inj)
-#                 try:
-#                     tdo = rcv.invariant()
-#                     print('tdo ' + str(tdo))
-#                 except ValueError:
-#                     tdo = None
-#                 if stuck is None:
-#                     stuck = tdo
-#                 if stuck != tdo:
-#                     stuck = None
-#                 rcv >>= length
-#                 print('rcv ' + str(rcv))
-#                 print('inj ' + str(inj))
-#                 if rcv == inj:
-#                     ok = True
-#                 else:
-#                     break
-#                 inj.inc()
-#             if ok:
-#                 print("Register detected length: %d" % length)
-#                 return length
-#         if stuck is not None:
-#             raise JtagError('TDO seems to be stuck')
-#         raise JtagError('Unable to detect register length')
-
-# jtag = JtagTestCase()
-# jtag.setUp()
-# jtag.test_idcode_reset()
-# jtag.test_idcode_sequence()
-# # jtag.test_idcode_shift_register()
-# # jtag.test_bypass_shift_register()
-# from pyftdi.jtag import *
-# jtag.jtag.capture_ir()
-# detect_reg_size(jtag.tool)
