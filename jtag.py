@@ -50,9 +50,8 @@ class JTAG:
     def connect(self, interface):
         self.engine = JtagEngine(frequency=10000)
         self.engine.configure(interface)
-        self.engine.reset()
 
-    def ennumerate(self):
+    def reset(self):
         self.devices = []
         i = 0
         self.engine.reset()
@@ -72,6 +71,11 @@ class JTAG:
         parser = bsdl.bsdlParser()
         json = parser.parse(bsdl_file, "bsdl_description", semantics=self.BsdlSemantics(), parseinfo=False).asjson()
         self.json_bsdl = bsdlJson.BsdlJson(json)
+
+    def bypass(self, reg_size, total_reg_size):
+        jtag.engine.go_idle()
+        jtag.engine.capture_ir()
+        jtag.engine.write_ir(BitSequence('1'*reg_size, length=total_reg_size, msb=True))
 
     def write_pin(self, pin, value):
         bit_state_dict = {}
@@ -105,10 +109,15 @@ class JTAG:
 if __name__ == '__main__':
     jtag = JTAG()
     jtag.connect('ftdi:///' + str(jtag.interfaces[0][1]))
-    jtag.ennumerate()
+    jtag.reset()
+    jtag.bypass(4,9)
     with open('STM32F301_F302_LQFP64.bsd','r') as raw_bsdl:
         jtag.load_bsdl(raw_bsdl.read())
-    print('write pin')
-    jtag.write_pin('PB13', 1)
+    jtag.engine.go_idle()
+    jtag.engine.capture_ir()
+    jtag.engine.write_ir(jtag.json_bsdl.get_opcode('IDCODE'))
+    print('0x%08x' % int.from_bytes(jtag.engine.read_dr(32).tobytes(), byteorder='big', signed=False))
+    # print('write pin')
+    # jtag.write_pin('PB13', 1)
 
     del jtag

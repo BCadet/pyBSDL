@@ -18,7 +18,7 @@
 
 
 import json
-
+from pyftdi.bits import BitSequence
 
 class BsdlJson:
     def __init__(self, bsdljson):
@@ -51,6 +51,7 @@ class BsdlJson:
                         opcode_raw = instruction_opcode.get("opcode_list", [None])[0]
                         if opcode_raw is not None:
                             opcode = int(opcode_raw, 2)
+                            return BitSequence(opcode, length=len(opcode_raw))
         return opcode
 
     def _get_boundary_register(self):
