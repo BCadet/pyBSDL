@@ -9,24 +9,24 @@ import bsdlJson
 import binascii
 
 def get_bit_settings(bit_state_dict, boundary_reg):
-    byte_array = list(boundary_reg[::-1])
+    byte_array = list(boundary_reg)
 
     for bit in bit_state_dict.keys():
-        byte_index = bit // 8
-        byte = 1 << (bit % 8)
+        # byte_index = bit // 8
+        # byte = 1 << (bit % 8)
         if bit_state_dict[bit] == 1:
-            byte_array[byte_index] |= byte
+            byte_array[bit] = 1
         else:
-            byte_array[byte_index] &= (~byte & 0xff)
-
-    # return binascii.b2a_hex(bytes(byte_array[::-1])).upper()
-    bitsequence = None
-    for byte in byte_array:
-        if bitsequence is None:
-            bitsequence = BitSequence(byte, length=8)
-        else:
-            bitsequence += BitSequence(byte, length=8)
-    return bitsequence.reverse()
+            byte_array[bit] = 0
+    return BitSequence(byte_array)
+    # return byte_array
+    # bitsequence = None
+    # for byte in byte_array:
+    #     if bitsequence is None:
+    #         bitsequence = BitSequence(byte, length=8)
+    #     else:
+    #         bitsequence += BitSequence(byte, length=8)
+    # return bitsequence.reverse()
 
 class JTAG:
 
@@ -73,9 +73,15 @@ class JTAG:
         self.json_bsdl = bsdlJson.BsdlJson(json)
 
     def bypass(self, reg_size, total_reg_size):
-        jtag.engine.go_idle()
-        jtag.engine.capture_ir()
-        jtag.engine.write_ir(BitSequence('1'*reg_size, length=total_reg_size, msb=True))
+        self.engine.go_idle()
+        self.engine.capture_ir()
+        self.engine.write_ir(BitSequence('1'*reg_size, length=total_reg_size, msb=True))
+
+    def get_idcode(self):
+        self.engine.go_idle()
+        self.engine.capture_ir()
+        self.engine.write_ir(jtag.json_bsdl.get_opcode('IDCODE'))
+        return int.from_bytes(jtag.engine.read_dr(32).tobytes(), byteorder='big', signed=False)
 
     def write_pin(self, pin, value):
         bit_state_dict = {}
@@ -91,19 +97,24 @@ class JTAG:
                     bit_state_dict[control_cell_number] = enable_value
                     bit_state_dict[bit] = value
 
+        self.engine.go_idle()
+        self.engine.capture_ir()
         self.engine.write_ir(self.json_bsdl.sample_opcode)
         boundary_reg = self.engine.read_dr(self.json_bsdl.boundary_length)
 
         bit_settings = get_bit_settings(bit_state_dict, boundary_reg)
 
-        print(bit_settings)
-        val = BitSequence(1<<62, length=self.json_bsdl.boundary_length).reverse()
-        print(val)
-
+        # print(BitSequence(bit_settings).sequence())
+        # val = BitSequence(1<<62, length=self.json_bsdl.boundary_length).reverse()
+        # print(val)
+        self.engine.capture_ir()
         self.engine.write_ir(self.json_bsdl.get_opcode('PRELOAD'))
-        self.engine.write_dr(val)
+        self.engine.capture_dr()
+        self.engine.write_dr(bit_settings)
+        self.engine.capture_ir()
         self.engine.write_ir(self.json_bsdl.get_opcode('EXTEST'))
-        self.engine.write_dr(val)
+        self.engine.capture_dr()
+        self.engine.write_dr(bit_settings)
 
 
 if __name__ == '__main__':
@@ -113,11 +124,16 @@ if __name__ == '__main__':
     jtag.bypass(4,9)
     with open('STM32F301_F302_LQFP64.bsd','r') as raw_bsdl:
         jtag.load_bsdl(raw_bsdl.read())
-    jtag.engine.go_idle()
-    jtag.engine.capture_ir()
-    jtag.engine.write_ir(jtag.json_bsdl.get_opcode('IDCODE'))
-    print('0x%08x' % int.from_bytes(jtag.engine.read_dr(32).tobytes(), byteorder='big', signed=False))
-    # print('write pin')
-    # jtag.write_pin('PB13', 1)
+    print('0x%08x'%jtag.get_idcode())
+    print('write pin')
+
+    while True:
+        from time import sleep
+
+        jtag.write_pin('PB13', 1)
+        sleep(0.01)
+        jtag.write_pin('PB13', 0)
+        sleep(0.01)
+    
 
     del jtag
