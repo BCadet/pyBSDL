@@ -27,6 +27,17 @@ class BsdlJson:
         self.sample_opcode = self.get_opcode("SAMPLE")
         self.boundary_register = self._get_boundary_register()
         self.pin_map = self._get_pin_map()
+        self.instruction_length = self._get_instruction_length()
+
+    def _get_instruction_length(self):
+        instruction_length_int = 0
+        instruction_register_description = self.json_data.get("instruction_register_description")
+        if instruction_register_description is not None:
+            instruction_length = instruction_register_description.get("instruction_length")
+            if instruction_length is not None:
+                instruction_length_int = int(instruction_length)
+        return instruction_length_int
+
 
     def _get_boundary_length(self):
         boundary_length_int = 0
@@ -56,19 +67,22 @@ class BsdlJson:
 
     def _get_boundary_register(self):
         boundary_register = {}
-        boundary_scan_register_description = self.json_data.get("boundary_scan_register_description")
-        if boundary_scan_register_description is not None:
-            fixed_boundary_stmts = boundary_scan_register_description.get("fixed_boundary_stmts")
-            if fixed_boundary_stmts is not None:
-                boundary_register_list = fixed_boundary_stmts.get("boundary_register")
-                if boundary_register_list is not None:
-                    for cell in boundary_register_list:
-                        cell_number = cell.get("cell_number")
-                        if cell_number is not None:
-                            cell_info = cell.get("cell_info")
-                            if cell_info is not None:
-                                boundary_register[cell_number] = cell_info
-        return boundary_register
+        try:
+            boundary_scan_register_description = self.json_data.get("boundary_scan_register_description")
+            if boundary_scan_register_description is not None:
+                fixed_boundary_stmts = boundary_scan_register_description.get("fixed_boundary_stmts")
+                if fixed_boundary_stmts is not None:
+                    boundary_register_list = fixed_boundary_stmts.get("boundary_register")
+                    if boundary_register_list is not None:
+                        for cell in boundary_register_list:
+                            cell_number = cell.get("cell_number")
+                            if cell_number is not None:
+                                cell_info = cell.get("cell_info")
+                                if cell_info is not None:
+                                    boundary_register[cell_number] = cell_info
+            return boundary_register
+        except:
+            return None
 
     def _get_pin_map(self):
         pin_map = {}
